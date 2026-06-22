@@ -49,7 +49,7 @@ public class EcommerceApplication {
             }
 
             // Seed admin user if not exists
-            if (!userRepository.existsByEmail("admin@zuu.in")) {
+            if (!userRepository.existsByEmail("admin@shopzuu.in")) {
                 User admin = User.builder()
                         .name("ShopzuuAdmin")
                         .email("admin@shopzuu.in")
