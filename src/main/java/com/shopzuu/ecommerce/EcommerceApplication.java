@@ -49,10 +49,10 @@ public class EcommerceApplication {
             }
 
             // Seed admin user if not exists
-            if (!userRepository.existsByEmail("admin@shopflow.in")) {
+            if (!userRepository.existsByEmail("admin@zuu.in")) {
                 User admin = User.builder()
-                        .name("ShopFlow Admin")
-                        .email("admin@shopflow.in")
+                        .name("ShopzuuAdmin")
+                        .email("admin@shopzuu.in")
                         .password(passwordEncoder.encode("Admin@123"))
                         .phone("9999999999")
                         .role(User.Role.ADMIN)
@@ -60,7 +60,7 @@ public class EcommerceApplication {
                         .build();
                 userRepository.save(admin);
                 System.out.println("✅ Admin user created");
-                System.out.println("📧 Email: admin@shopflow.in");
+                System.out.println("📧 Email: admin@shopzuu.in");
                 System.out.println("🔑 Password: Admin@123");
             }
         };
