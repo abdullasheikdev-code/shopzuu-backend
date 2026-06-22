@@ -31,16 +31,16 @@ public class SecurityConfig {
 
     private static final String[] PUBLIC_URLS = {
 
-            // Auth APIs
+            "/",
+            "/actuator/**",
+
             "/api/auth/**",
 
-            // Product APIs
             "/api/products/public/**",
             "/api/categories/**",
             "/api/products/search",
             "/api/products/featured",
 
-            // Swagger URLs
             "/swagger-ui/**",
             "/swagger-ui.html",
             "/v3/api-docs/**",
@@ -62,17 +62,14 @@ public class SecurityConfig {
         http
                 .csrf(csrf -> csrf.disable())
 
-                .cors(cors ->
-                        cors.configurationSource(corsConfigurationSource()))
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
 
                 .sessionManagement(session ->
-                        session.sessionCreationPolicy(
-                                SessionCreationPolicy.STATELESS))
+                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
                 .authorizeHttpRequests(auth -> auth
 
-                        .requestMatchers(PUBLIC_URLS)
-                        .permitAll()
+                        .requestMatchers(PUBLIC_URLS).permitAll()
 
                         .requestMatchers(VENDOR_URLS)
                         .hasAnyRole("VENDOR", "ADMIN")
