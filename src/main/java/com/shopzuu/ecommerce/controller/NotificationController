@@ -1,0 +1,55 @@
+package com.shopzuu.ecommerce.controller;
+
+import com.shopzuu.ecommerce.dto.response.ApiResponse;
+import com.shopzuu.ecommerce.exception.ResourceNotFoundException;
+import com.shopzuu.ecommerce.model.*;
+import com.shopzuu.ecommerce.repository.*;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/notifications")
+@RequiredArgsConstructor
+public class NotificationController {
+
+    private final NotificationRepository notificationRepository;
+    private final UserRepository userRepository;
+
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<Notification>>> getMyNotifications(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = userRepository.findByEmail(userDetails.getUsername())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        return ResponseEntity.ok(
+                ApiResponse.success("Notifications fetched",
+                        notificationRepository.findByUserIdOrderByCreatedAtDesc(user.getId()))
+        );
+    }
+
+    @GetMapping("/unread-count")
+    public ResponseEntity<ApiResponse<Integer>> getUnreadCount(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = userRepository.findByEmail(userDetails.getUsername())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        return ResponseEntity.ok(
+                ApiResponse.success("Unread count",
+                        notificationRepository.countByUserIdAndIsReadFalse(user.getId()))
+        );
+    }
+
+    @PutMapping("/{id}/read")
+    public ResponseEntity<ApiResponse<Void>> markAsRead(@PathVariable Long id) {
+        Notification notification = notificationRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Notification not found"));
+        notification.setRead(true);
+        notificationRepository.save(notification);
+        return ResponseEntity.ok(ApiResponse.success("Marked as read", null));
+    }
+}

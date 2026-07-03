@@ -1,5 +1,6 @@
 package com.shopzuu.ecommerce.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.*;
 import lombok.*;
 import java.util.List;
@@ -31,5 +32,6 @@ public class ProductRequest {
     @NotNull(message = "Category is required")
     private Long categoryId;
 
+    @JsonProperty("isFeatured")
     private boolean isFeatured = false;
 }

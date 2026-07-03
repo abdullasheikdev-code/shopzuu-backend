@@ -2,6 +2,7 @@ package com.shopzuu.ecommerce.controller;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import com.shopzuu.ecommerce.dto.request.*;
 import com.shopzuu.ecommerce.dto.response.*;
+import com.shopzuu.ecommerce.dto.request.ShipmentRequest;
 import com.shopzuu.ecommerce.service.OrderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -88,6 +89,24 @@ public class OrderController {
         return ResponseEntity.ok(
                 ApiResponse.success("All orders",
                         orderService.getAllOrders())
+        );
+    }
+
+    @PutMapping("/vendor/{orderId}/ship")
+    public ResponseEntity<ApiResponse<OrderResponse>> shipOrder(
+            @PathVariable Long orderId,
+            @Valid @RequestBody ShipmentRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "Order shipped successfully",
+                        orderService.shipOrder(
+                                orderId,
+                                request,
+                                userDetails.getUsername()
+                        )
+                )
         );
     }
 }

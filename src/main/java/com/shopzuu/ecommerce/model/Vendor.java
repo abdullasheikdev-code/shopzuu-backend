@@ -1,5 +1,6 @@
 package com.shopzuu.ecommerce.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
@@ -49,9 +50,11 @@ public class Vendor {
     private LocalDateTime createdAt;
 
     @OneToMany(mappedBy = "vendor", cascade = CascadeType.ALL)
+    @JsonIgnore
     private List<Product> products;
 
     @OneToMany(mappedBy = "vendor", cascade = CascadeType.ALL)
+    @JsonIgnore
     private List<Subscription> subscriptions;
 
     @PrePersist

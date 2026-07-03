@@ -49,6 +49,18 @@ public class Order {
     @Column(name = "shipping_address", length = 500)
     private String shippingAddress;
 
+    @Column(name = "courier_name")
+    private String courierName;
+
+    @Column(name = "tracking_number")
+    private String trackingNumber;
+
+    @Column(name = "tracking_url")
+    private String trackingUrl;
+
+    @Column(name = "shipped_at")
+    private LocalDateTime shippedAt;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

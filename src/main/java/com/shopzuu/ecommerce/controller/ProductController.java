@@ -110,6 +110,15 @@ public class ProductController {
         );
     }
 
+    @PutMapping("/api/vendor/products/{id}/toggle-featured")
+    public ResponseEntity<ApiResponse<ProductResponse>> toggleFeatured(
+            @PathVariable Long id) {
+        return ResponseEntity.ok(
+                ApiResponse.success("Featured status toggled",
+                        productService.toggleFeatured(id))
+        );
+    }
+
     @GetMapping("/api/vendor/products")
     public ResponseEntity<ApiResponse<List<ProductResponse>>> getVendorProducts(
             @AuthenticationPrincipal UserDetails userDetails) {
@@ -121,3 +130,4 @@ public class ProductController {
         );
     }
 }
+

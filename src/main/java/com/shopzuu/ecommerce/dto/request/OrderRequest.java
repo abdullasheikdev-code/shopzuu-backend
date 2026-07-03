@@ -15,5 +15,9 @@ public class OrderRequest {
     @NotBlank(message = "Payment gateway is required")
     private String paymentGateway; // STRIPE or RAZORPAY
 
-    private String paymentId; // received from frontend after payment
+    private String paymentId;
+
+    private String couponCode;
+
+  // received from frontend after payment
 }

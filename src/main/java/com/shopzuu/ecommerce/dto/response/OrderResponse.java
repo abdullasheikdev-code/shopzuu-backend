@@ -20,6 +20,13 @@ public class OrderResponse {
     private String status;
     private String paymentStatus;
     private String shippingAddress;
+    private String courierName;
+
+    private String trackingNumber;
+
+    private String trackingUrl;
+
+    private String shippedAt;
     private String createdAt;
 
     @Data

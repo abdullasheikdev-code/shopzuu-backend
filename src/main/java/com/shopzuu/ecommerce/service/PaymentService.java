@@ -212,17 +212,46 @@ public class PaymentService {
                     .orElseThrow(() ->
                             new ResourceNotFoundException("Payment record not found"));
 
+            if (payment.getStatus() == Payment.PaymentStatus.SUCCESS) {
+                throw new PaymentException("Payment already verified");
+            }
+
+            if (paymentRepository.existsByPaymentGatewayId(razorpayPaymentId)) {
+                throw new PaymentException("Duplicate payment id");
+            }
+
+            RazorpayClient client =
+                    new RazorpayClient(razorpayKeyId, razorpayKeySecret);
+
+            com.razorpay.Payment razorpayPayment =
+                    client.payments.fetch(razorpayPaymentId);
+            Number paidAmountObj = (Number) razorpayPayment.get("amount");
+            long paidAmount = paidAmountObj.longValue();
+
+
+            long expectedAmount =
+                    Math.round(payment.getAmount() * 100);
+
+            if (paidAmount != expectedAmount) {
+                throw new PaymentException("Payment amount mismatch");
+            }
+
             payment.setStatus(Payment.PaymentStatus.SUCCESS);
             payment.setPaymentGatewayId(razorpayPaymentId);
             paymentRepository.save(payment);
+
+            if (!payment.getOrder().getId().equals(orderId)) {
+                throw new PaymentException("Order mismatch");
+            }
 
             orderService.markAsPaid(orderId, razorpayPaymentId);
 
             return "Payment verified successfully";
 
-        } catch (RazorpayException e) {
+        } catch (Exception e) {
+            e.printStackTrace();
             throw new PaymentException(
-                    "Signature verification failed: " + e.getMessage()
+                    "Verification failed: " + e.getMessage()
             );
         }
     }

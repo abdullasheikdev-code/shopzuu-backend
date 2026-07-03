@@ -272,4 +272,15 @@ public class ProductService {
                 .affiliateSource(product.getAffiliateSource())
                 .build();
     }
+
+    @Transactional
+    public ProductResponse toggleFeatured(Long productId) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
+
+        product.setFeatured(!product.isFeatured());
+        productRepository.save(product);
+
+        return mapToResponse(product);
+    }
 }

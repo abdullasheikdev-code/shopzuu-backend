@@ -2,6 +2,7 @@ package com.shopzuu.ecommerce.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+
 import java.util.List;
 
 @Entity
@@ -28,6 +29,16 @@ public class Cart {
     private List<CartItem> items;
 
     public Double getTotalAmount() {
-        return 0.0;
+
+        if (items == null || items.isEmpty()) {
+            return 0.0;
+        }
+
+        return items.stream()
+                .mapToDouble(item ->
+                        item.getSubtotal() != null
+                                ? item.getSubtotal()
+                                : 0.0)
+                .sum();
     }
 }

@@ -2,7 +2,7 @@ package com.shopzuu.ecommerce.service;
 
 import com.shopzuu.ecommerce.model.*;
 import org.springframework.stereotype.Service;
-
+import com.shopzuu.ecommerce.util.MoneyUtil;
 @Service
 public class CommissionService {
 
@@ -22,12 +22,12 @@ public class CommissionService {
 
     // Calculate commission for a single item
     public Double calculateCommission(Double amount, Double rate) {
-        return Math.round((amount * rate / 100) * 100.0) / 100.0;
+        return MoneyUtil.round(amount * rate / 100);
     }
 
     // Calculate vendor earning after commission
     public Double calculateVendorEarning(Double amount, Double commissionAmount) {
-        return Math.round((amount - commissionAmount) * 100.0) / 100.0;
+        return MoneyUtil.round(amount - commissionAmount);
     }
 
     // Get plan price

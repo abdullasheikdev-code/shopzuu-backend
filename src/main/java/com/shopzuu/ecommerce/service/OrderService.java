@@ -1,14 +1,17 @@
 package com.shopzuu.ecommerce.service;
 
+import com.shopzuu.ecommerce.util.MoneyUtil;
 import com.shopzuu.ecommerce.dto.request.OrderRequest;
+import com.shopzuu.ecommerce.dto.request.ShipmentRequest;
 import com.shopzuu.ecommerce.dto.response.OrderResponse;
-import com.shopzuu.ecommerce.exception.*;
+import com.shopzuu.ecommerce.exception.ResourceNotFoundException;
 import com.shopzuu.ecommerce.model.*;
 import com.shopzuu.ecommerce.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -25,24 +28,62 @@ public class OrderService {
     private final VendorRepository vendorRepository;
     private final ProductRepository productRepository;
     private final CommissionService commissionService;
+    private final CouponService couponService;
 
-    // Place order from cart
     @Transactional
     public OrderResponse placeOrder(OrderRequest request, String email) {
 
         User buyer = userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("User not found"));
 
         Cart cart = cartRepository.findByUser(buyer)
-                .orElseThrow(() -> new ResourceNotFoundException("Cart not found"));
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Cart not found"));
 
         if (cart.getItems() == null || cart.getItems().isEmpty()) {
             throw new RuntimeException("Cart is empty");
         }
 
-        // Build order items and calculate totals
         List<OrderItem> orderItems = new ArrayList<>();
-        double totalAmount = 0.0;
+
+        double originalTotal = 0.0;
+
+        for (CartItem item : cart.getItems()) {
+
+            Product product = item.getProduct();
+
+            double sellingPrice = product.getDiscountPrice() != null
+                    ? product.getDiscountPrice()
+                    : product.getPrice();
+
+            originalTotal = MoneyUtil.round(
+                    originalTotal + (sellingPrice * item.getQuantity())
+            );
+        }
+
+        double discountAmount = 0.0;
+
+        if (request.getCouponCode() != null &&
+                !request.getCouponCode().isBlank()) {
+
+            Coupon coupon = couponService.validateCoupon(
+                    request.getCouponCode(),
+                    originalTotal
+            );
+
+            discountAmount = couponService.calculateDiscount(
+                    coupon,
+                    originalTotal
+            );
+
+            couponService.markCouponUsed(coupon);
+        }
+
+        double finalTotal = MoneyUtil.round(
+                originalTotal - discountAmount
+        );
+
         double totalCommission = 0.0;
 
         for (CartItem cartItem : cart.getItems()) {
@@ -51,56 +92,70 @@ public class OrderService {
 
             if (product.getStock() < cartItem.getQuantity()) {
                 throw new RuntimeException(
-                        "Insufficient stock for: " + product.getName()
+                        "Insufficient stock for: "
+                                + product.getName()
                 );
             }
 
+            double sellingPrice = product.getDiscountPrice() != null
+                    ? product.getDiscountPrice()
+                    : product.getPrice();
+
+            double subtotal = MoneyUtil.round(
+                    sellingPrice * cartItem.getQuantity()
+            );
+
+            double ratio = subtotal / originalTotal;
+
+            double itemDiscount = MoneyUtil.round(
+                    discountAmount * ratio
+            );
+
+            double discountedSubtotal = MoneyUtil.round(
+                    subtotal - itemDiscount
+            );
+
             Vendor vendor = product.getVendor();
+
             double commissionRate =
                     commissionService.getCommissionRate(vendor);
-            double subtotal = product.getPrice() * cartItem.getQuantity();
+
             double commissionAmount =
-                    commissionService.calculateCommission(subtotal, commissionRate);
+                    commissionService.calculateCommission(
+                            discountedSubtotal,
+                            commissionRate
+                    );
+
             double vendorEarning =
                     commissionService.calculateVendorEarning(
-                            subtotal, commissionAmount
+                            discountedSubtotal,
+                            commissionAmount
                     );
 
             OrderItem orderItem = OrderItem.builder()
                     .product(product)
                     .vendor(vendor)
                     .quantity(cartItem.getQuantity())
-                    .unitPrice(product.getPrice())
-                    .subtotal(subtotal)
+                    .unitPrice(sellingPrice)
+                    .subtotal(discountedSubtotal)
                     .commissionAmount(commissionAmount)
                     .vendorEarning(vendorEarning)
                     .build();
 
             orderItems.add(orderItem);
-            totalAmount += subtotal;
-            totalCommission += commissionAmount;
 
-            // Reduce stock
-            product.setStock(product.getStock() - cartItem.getQuantity());
-            product.setTotalSold(
-                    product.getTotalSold() + cartItem.getQuantity()
+            totalCommission = MoneyUtil.round(
+                    totalCommission + commissionAmount
             );
-            productRepository.save(product);
-
-            // Update vendor earnings
-            vendor.setTotalEarnings(vendor.getTotalEarnings() + vendorEarning);
-            vendor.setPlatformCommissionPaid(
-                    vendor.getPlatformCommissionPaid() + commissionAmount
-            );
-            vendorRepository.save(vendor);
         }
 
-        double vendorPayout = totalAmount - totalCommission;
+        double vendorPayout = MoneyUtil.round(
+                finalTotal - totalCommission
+        );
 
-        // Create order
         Order order = Order.builder()
                 .buyer(buyer)
-                .totalAmount(totalAmount)
+                .totalAmount(finalTotal)
                 .platformCommission(totalCommission)
                 .vendorPayout(vendorPayout)
                 .status(Order.OrderStatus.PENDING)
@@ -110,7 +165,6 @@ public class OrderService {
 
         orderRepository.save(order);
 
-        // Link order items to order
         for (OrderItem item : orderItems) {
             item.setOrder(order);
             orderItemRepository.save(item);
@@ -118,29 +172,80 @@ public class OrderService {
 
         order.setItems(orderItems);
 
-        // Clear cart
         cartItemRepository.deleteByCartId(cart.getId());
 
         return mapToResponse(order);
     }
 
-    // Mark order as paid after payment
     @Transactional
     public OrderResponse markAsPaid(Long orderId, String paymentId) {
+
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() ->
                         new ResourceNotFoundException("Order not found"));
+
+        if (order.getPaymentStatus() == Order.PaymentStatus.PAID) {
+            return mapToResponse(order);
+        }
+
         order.setPaymentStatus(Order.PaymentStatus.PAID);
         order.setStatus(Order.OrderStatus.CONFIRMED);
         order.setPaymentId(paymentId);
+
+        for (OrderItem item : order.getItems()) {
+
+            Product product = item.getProduct();
+
+            if (product.getStock() < item.getQuantity()) {
+                throw new RuntimeException(
+                        "Product went out of stock before payment."
+                );
+            }
+
+            product.setStock(
+                    product.getStock() - item.getQuantity()
+            );
+
+            product.setTotalSold(
+                    product.getTotalSold() + item.getQuantity()
+            );
+
+            productRepository.save(product);
+
+            Vendor vendor = item.getVendor();
+
+            vendor.setTotalEarnings(
+                    MoneyUtil.round(
+                            (vendor.getTotalEarnings() == null
+                                    ? 0.0
+                                    : vendor.getTotalEarnings())
+                                    + item.getVendorEarning()
+                    )
+            );
+
+            vendor.setPlatformCommissionPaid(
+                    MoneyUtil.round(
+                            (vendor.getPlatformCommissionPaid() == null
+                                    ? 0.0
+                                    : vendor.getPlatformCommissionPaid())
+                                    + item.getCommissionAmount()
+                    )
+            );
+
+            vendorRepository.save(vendor);
+        }
+
         orderRepository.save(order);
+
         return mapToResponse(order);
     }
-
     // Buyer: get my orders
     public List<OrderResponse> getMyOrders(String email) {
+
         User buyer = userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("User not found"));
+
         return orderRepository.findByBuyerId(buyer.getId())
                 .stream()
                 .map(this::mapToResponse)
@@ -149,18 +254,59 @@ public class OrderService {
 
     // Vendor: get orders for my products
     public List<OrderResponse> getVendorOrders(String email) {
+
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("User not found"));
+
         Vendor vendor = vendorRepository.findByUser(user)
                 .orElseThrow(() ->
                         new ResourceNotFoundException("Vendor not found"));
+
         return orderRepository.findOrdersByVendorId(vendor.getId())
                 .stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }
 
-    // Vendor: update order status
+
+    // Vendor: Ship Order
+    @Transactional
+    public OrderResponse shipOrder(
+            Long orderId,
+            ShipmentRequest request,
+            String email) {
+
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Order not found"));
+
+        // Only PAID orders can be shipped
+        if (order.getPaymentStatus() != Order.PaymentStatus.PAID) {
+            throw new RuntimeException("Cannot ship an unpaid order.");
+        }
+
+        // Order must already be CONFIRMED
+        if (order.getStatus() != Order.OrderStatus.CONFIRMED) {
+            throw new RuntimeException(
+                    "Only CONFIRMED orders can be shipped."
+            );
+        }
+
+        order.setStatus(Order.OrderStatus.SHIPPED);
+
+        order.setCourierName(request.getCourierName());
+        order.setTrackingNumber(request.getTrackingNumber());
+        order.setTrackingUrl(request.getTrackingUrl());
+        order.setShippedAt(LocalDateTime.now());
+
+        orderRepository.save(order);
+
+        return mapToResponse(order);
+    }
+
+
+    // Vendor: Update Order Status
     @Transactional
     public OrderResponse updateOrderStatus(
             Long orderId,
@@ -171,26 +317,127 @@ public class OrderService {
                 .orElseThrow(() ->
                         new ResourceNotFoundException("Order not found"));
 
-        order.setStatus(Order.OrderStatus.valueOf(status.toUpperCase()));
+        Order.OrderStatus newStatus =
+                Order.OrderStatus.valueOf(status.toUpperCase());
+
+        Order.OrderStatus currentStatus = order.getStatus();
+
+        switch (currentStatus) {
+
+            case PENDING -> {
+                throw new RuntimeException(
+                        "Pending orders can only be confirmed after successful payment."
+                );
+            }
+
+            case CONFIRMED -> {
+
+                if (newStatus == Order.OrderStatus.CANCELLED) {
+
+                    for (OrderItem item : order.getItems()) {
+
+                        Product product = item.getProduct();
+
+                        product.setStock(
+                                product.getStock() + item.getQuantity()
+                        );
+
+                        product.setTotalSold(
+                                Math.max(
+                                        0,
+                                        product.getTotalSold() - item.getQuantity()
+                                )
+                        );
+
+                        productRepository.save(product);
+
+                        Vendor vendor = item.getVendor();
+
+                        vendor.setTotalEarnings(
+                                MoneyUtil.round(
+                                        Math.max(
+                                                0,
+                                                vendor.getTotalEarnings()
+                                                        - item.getVendorEarning()
+                                        )
+                                )
+                        );
+
+                        vendor.setPlatformCommissionPaid(
+                                MoneyUtil.round(
+                                        Math.max(
+                                                0,
+                                                vendor.getPlatformCommissionPaid()
+                                                        - item.getCommissionAmount()
+                                        )
+                                )
+                        );
+
+                        vendorRepository.save(vendor);
+                    }
+
+                } else if (newStatus != Order.OrderStatus.SHIPPED) {
+
+                    throw new RuntimeException(
+                            "Confirmed orders can only be SHIPPED or CANCELLED."
+                    );
+                }
+            }
+            case SHIPPED -> {
+
+                if (newStatus != Order.OrderStatus.DELIVERED) {
+
+                    throw new RuntimeException(
+                            "Shipped orders can only be DELIVERED."
+                    );
+                }
+            }
+
+            case DELIVERED -> {
+                throw new RuntimeException(
+                        "Delivered orders cannot be modified."
+                );
+            }
+
+            case CANCELLED -> {
+                throw new RuntimeException(
+                        "Cancelled orders cannot be modified."
+                );
+            }
+
+            case REFUNDED -> {
+                throw new RuntimeException(
+                        "Refunded orders cannot be modified."
+                );
+            }
+        }
+
+        order.setStatus(newStatus);
+
         orderRepository.save(order);
+
         return mapToResponse(order);
     }
 
-    // Admin: get all orders
+    // Admin: Get All Orders
     public List<OrderResponse> getAllOrders() {
+
         return orderRepository.findAll()
                 .stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }
 
-    // Map entity to response
+    // Entity → DTO Mapper
     public OrderResponse mapToResponse(Order order) {
 
         List<OrderResponse.OrderItemResponse> itemResponses =
-                order.getItems() == null ? List.of() :
-                        order.getItems().stream()
-                                .map(item -> OrderResponse.OrderItemResponse.builder()
+                order.getItems() == null
+                        ? List.of()
+                        : order.getItems()
+                        .stream()
+                        .map(item ->
+                                OrderResponse.OrderItemResponse.builder()
                                         .productId(item.getProduct().getId())
                                         .productName(item.getProduct().getName())
                                         .vendorShopName(item.getVendor().getShopName())
@@ -199,8 +446,9 @@ public class OrderService {
                                         .subtotal(item.getSubtotal())
                                         .commissionAmount(item.getCommissionAmount())
                                         .vendorEarning(item.getVendorEarning())
-                                        .build())
-                                .collect(Collectors.toList());
+                                        .build()
+                        )
+                        .collect(Collectors.toList());
 
         return OrderResponse.builder()
                 .id(order.getId())
@@ -214,8 +462,22 @@ public class OrderService {
                 .status(order.getStatus().name())
                 .paymentStatus(order.getPaymentStatus().name())
                 .shippingAddress(order.getShippingAddress())
-                .createdAt(order.getCreatedAt() != null
-                        ? order.getCreatedAt().toString() : null)
+
+                // Shipment Tracking
+                .courierName(order.getCourierName())
+                .trackingNumber(order.getTrackingNumber())
+                .trackingUrl(order.getTrackingUrl())
+                .shippedAt(
+                        order.getShippedAt() != null
+                                ? order.getShippedAt().toString()
+                                : null
+                )
+
+                .createdAt(
+                        order.getCreatedAt() != null
+                                ? order.getCreatedAt().toString()
+                                : null
+                )
                 .build();
     }
 }

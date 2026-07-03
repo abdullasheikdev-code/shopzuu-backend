@@ -1,12 +1,17 @@
 package com.shopzuu.ecommerce.service;
 
-import com.shopzuu.ecommerce.dto.response.*;
-import com.shopzuu.ecommerce.exception.*;
-import com.shopzuu.ecommerce.model.*;
-import com.shopzuu.ecommerce.repository.*;
+import com.shopzuu.ecommerce.dto.response.VendorDashboardResponse;
+import com.shopzuu.ecommerce.exception.ResourceNotFoundException;
+import com.shopzuu.ecommerce.model.Order;
+import com.shopzuu.ecommerce.model.User;
+import com.shopzuu.ecommerce.model.Vendor;
+import com.shopzuu.ecommerce.repository.OrderItemRepository;
+import com.shopzuu.ecommerce.repository.OrderRepository;
+import com.shopzuu.ecommerce.repository.ProductRepository;
+import com.shopzuu.ecommerce.repository.UserRepository;
+import com.shopzuu.ecommerce.repository.VendorRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -22,73 +27,96 @@ public class VendorService {
     private final OrderItemRepository orderItemRepository;
     private final ProductRepository productRepository;
 
-    // Get vendor dashboard
     public VendorDashboardResponse getDashboard(String email) {
 
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         Vendor vendor = vendorRepository.findByUser(user)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException("Vendor not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Vendor not found"));
 
-        LocalDateTime monthStart = LocalDateTime.now().withDayOfMonth(1)
-                .withHour(0).withMinute(0).withSecond(0);
+        LocalDateTime monthStart = LocalDateTime.now()
+                .withDayOfMonth(1)
+                .withHour(0)
+                .withMinute(0)
+                .withSecond(0);
+
         LocalDateTime monthEnd = LocalDateTime.now();
 
-        Double thisMonthEarnings = orderRepository.earningsByVendorBetween(
-                vendor.getId(), monthStart, monthEnd
-        );
+        Double totalEarnings =
+                orderRepository.totalEarningsByVendor(vendor.getId());
 
-        Integer totalOrders = orderRepository
-                .findOrdersByVendorId(vendor.getId()).size();
+        if (totalEarnings == null) {
+            totalEarnings = 0.0;
+        }
 
-        Integer pendingOrders = orderRepository
-                .findOrdersByVendorIdAndStatus(
+        Double thisMonthEarnings =
+                orderRepository.earningsByVendorBetween(
                         vendor.getId(),
-                        Order.OrderStatus.PENDING
-                ).size();
+                        monthStart,
+                        monthEnd
+                );
 
-        // Recent orders
+        if (thisMonthEarnings == null) {
+            thisMonthEarnings = 0.0;
+        }
+
+        Integer totalOrders =
+                orderRepository.countPaidOrdersByVendor(vendor.getId());
+
+        if (totalOrders == null) {
+            totalOrders = 0;
+        }
+
+        Integer pendingOrders =
+                orderRepository.countPendingOrdersByVendor(vendor.getId());
+
+        if (pendingOrders == null) {
+            pendingOrders = 0;
+        }
+
         List<VendorDashboardResponse.RecentOrderSummary> recentOrders =
-                orderRepository.findOrdersByVendorId(vendor.getId())
+                orderRepository.findRecentOrders(vendor.getId())
                         .stream()
                         .limit(5)
-                        .map(order -> VendorDashboardResponse.RecentOrderSummary
-                                .builder()
-                                .orderNumber(order.getOrderNumber())
-                                .buyerName(order.getBuyer().getName())
-                                .amount(order.getTotalAmount())
-                                .status(order.getStatus().name())
-                                .date(order.getCreatedAt().toString())
-                                .build())
+                        .map(order ->
+                                VendorDashboardResponse.RecentOrderSummary.builder()
+                                        .orderNumber(order.getOrderNumber())
+                                        .buyerName(order.getBuyer().getName())
+                                        .amount(order.getVendorPayout())
+                                        .status(order.getStatus().name())
+                                        .date(order.getCreatedAt().toString())
+                                        .build()
+                        )
                         .collect(Collectors.toList());
 
-        // Top products
         List<VendorDashboardResponse.TopProduct> topProducts =
-                productRepository.findTopSellingByVendor(vendor.getId())
+                orderItemRepository.findTopProductsByVendor(vendor.getId())
                         .stream()
                         .limit(5)
-                        .map(product -> VendorDashboardResponse.TopProduct.builder()
-                                .productName(product.getName())
-                                .totalSold(product.getTotalSold())
-                                .revenue(product.getPrice() * product.getTotalSold())
-                                .build())
+                        .map(row ->
+                                VendorDashboardResponse.TopProduct.builder()
+                                        .productName((String) row[1])
+                                        .totalSold(((Long) row[2]).intValue())
+                                        .revenue(((Double) row[3]))
+                                        .build()
+                        )
                         .collect(Collectors.toList());
 
         return VendorDashboardResponse.builder()
                 .shopName(vendor.getShopName())
                 .plan(vendor.getPlan().name())
                 .vendorStatus(vendor.getStatus().name())
-                .totalEarnings(vendor.getTotalEarnings())
-                .platformCommissionPaid(vendor.getPlatformCommissionPaid())
-                .totalProducts(productRepository
-                        .countByVendorId(vendor.getId()))
+                .totalEarnings(totalEarnings)
+                .platformCommissionPaid(
+                        vendor.getPlatformCommissionPaid() == null
+                                ? 0.0
+                                : vendor.getPlatformCommissionPaid()
+                )
+                .totalProducts(productRepository.countByVendorId(vendor.getId()))
                 .totalOrders(totalOrders)
                 .pendingOrders(pendingOrders)
-                .thisMonthEarnings(
-                        thisMonthEarnings != null ? thisMonthEarnings : 0.0
-                )
+                .thisMonthEarnings(thisMonthEarnings)
                 .recentOrders(recentOrders)
                 .topProducts(topProducts)
                 .build();
