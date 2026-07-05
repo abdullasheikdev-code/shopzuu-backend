@@ -124,7 +124,8 @@ public class SecurityConfig {
 
         config.setAllowedOrigins(List.of(
                 "http://localhost:3000",
-                "https://*.vercel.app",
+                "https://shopzuu-frontend-ecj3gkl7s-shopzuu.vercel.app",
+                "https://shopzuu-frontend-c891akdlp-shopzuu.vercel.app",
                 "https://shopflow.in"
         ));
 
