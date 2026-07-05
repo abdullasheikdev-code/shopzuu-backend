@@ -123,6 +123,7 @@ public class SecurityConfig {
         CorsConfiguration config = new CorsConfiguration();
 
         config.setAllowedOrigins(List.of(
+                "https://shopzuu-frontend-ay3duofey-shopzuu.vercel.app",
                 "http://localhost:3000",
                 "https://shopzuu-frontend-ecj3gkl7s-shopzuu.vercel.app",
                 "https://shopzuu-frontend-c891akdlp-shopzuu.vercel.app",
