@@ -57,19 +57,26 @@ public class SecurityConfig {
     };
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http)
+            throws Exception {
 
         http
                 .csrf(csrf -> csrf.disable())
 
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .cors(cors ->
+                        cors.configurationSource(corsConfigurationSource())
+                )
 
                 .sessionManagement(session ->
-                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                        session.sessionCreationPolicy(
+                                SessionCreationPolicy.STATELESS
+                        )
+                )
 
                 .authorizeHttpRequests(auth -> auth
 
-                        .requestMatchers(PUBLIC_URLS).permitAll()
+                        .requestMatchers(PUBLIC_URLS)
+                        .permitAll()
 
                         .requestMatchers(VENDOR_URLS)
                         .hasAnyRole("VENDOR", "ADMIN")
@@ -105,8 +112,8 @@ public class SecurityConfig {
 
     @Bean
     public AuthenticationManager authenticationManager(
-            AuthenticationConfiguration config)
-            throws Exception {
+            AuthenticationConfiguration config
+    ) throws Exception {
 
         return config.getAuthenticationManager();
     }
@@ -122,11 +129,18 @@ public class SecurityConfig {
 
         CorsConfiguration config = new CorsConfiguration();
 
-        config.setAllowedOrigins(List.of(
-                "https://shopzuu-frontend-ay3duofey-shopzuu.vercel.app",
+        config.setAllowedOriginPatterns(List.of(
+
+                // Local development
                 "http://localhost:3000",
-                "https://shopzuu-frontend-ecj3gkl7s-shopzuu.vercel.app",
-                "https://shopzuu-frontend-c891akdlp-shopzuu.vercel.app",
+
+                // Main production frontend
+                "https://shopzuu-frontend.vercel.app",
+
+                // All Shopzuu Vercel preview deployments
+                "https://*.vercel.app",
+
+                // Future custom domain
                 "https://shopflow.in"
         ));
 
@@ -140,7 +154,15 @@ public class SecurityConfig {
         ));
 
         config.setAllowedHeaders(List.of("*"));
+
+        config.setExposedHeaders(List.of(
+                "Authorization",
+                "Content-Type"
+        ));
+
         config.setAllowCredentials(true);
+
+        config.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source =
                 new UrlBasedCorsConfigurationSource();
