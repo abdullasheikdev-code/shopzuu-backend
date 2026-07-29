@@ -70,7 +70,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
             """)
     Integer countByVendorId(@Param("vendorId") Long vendorId);
 
-    @Query("""
+    @Query("""  
             SELECT COUNT(p)
             FROM Product p
             WHERE p.isActive = true
